@@ -105,20 +105,36 @@ export function DropPage() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [productId, setProductId] = useState<string | null>(DEFAULT_PRODUCT_ID ?? null);
+  const [isFetchingProductId, setIsFetchingProductId] = useState(!DEFAULT_PRODUCT_ID);
 
-  const { product, isLoading, error } = useStock(productId ?? 'none');
+  // Only call useStock if we have a valid product ID
+  const { product, isLoading, error } = useStock(productId);
 
   // If no product ID configured, fetch the first product
   useEffect(() => {
-    if (!productId) {
+    if (!productId && !DEFAULT_PRODUCT_ID) {
       fetch('/api/products?limit=1')
-        .then((r) => r.json())
-        .then((d: { data?: Array<{ id: string }> }) => {
-          if (d.data?.[0]) setProductId(d.data[0].id);
+        .then((r) => {
+          if (!r.ok) throw new Error(`API returned ${r.status}`);
+          return r.json();
         })
-        .catch(() => toast('Could not connect to server', 'error'));
+        .then((d: { data?: Array<{ id: string }> }) => {
+          const firstProductId = d.data?.[0]?.id;
+          if (firstProductId) {
+            setProductId(firstProductId);
+          } else {
+            throw new Error('No products available');
+          }
+        })
+        .catch((err) => {
+          console.error('Failed to fetch products:', err);
+          toast('Could not connect to server', 'error');
+        })
+        .finally(() => setIsFetchingProductId(false));
+    } else {
+      setIsFetchingProductId(false);
     }
-  }, [productId]);
+  }, []);
 
   const handleAuth = async (email: string, password: string, mode: 'login' | 'register') => {
     setAuthLoading(true);
@@ -173,7 +189,7 @@ export function DropPage() {
           </div>
 
           {/* Network error */}
-          {error && !isLoading && (
+          {error && !isLoading && !isFetchingProductId && (
             <div style={{
               padding: '14px 16px', marginBottom: '16px',
               background: '#1a0808', border: '1px solid var(--red)',
@@ -186,7 +202,7 @@ export function DropPage() {
           )}
 
           {/* Product */}
-          {isLoading ? (
+          {isLoading || isFetchingProductId ? (
             <ProductSkeleton />
           ) : product ? (
             <ProductCard

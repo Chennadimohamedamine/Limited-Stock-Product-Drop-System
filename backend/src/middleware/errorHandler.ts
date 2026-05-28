@@ -9,11 +9,14 @@ export function errorHandler(
   res: Response,
   _next: NextFunction
 ): void {
+  // Log the full error for debugging
   logger.error({
     message: err.message,
+    name: err.name,
     stack: process.env.NODE_ENV !== 'production' ? err.stack : undefined,
     path: req.path,
     method: req.method,
+    body: req.body,
   });
 
   // Known operational error

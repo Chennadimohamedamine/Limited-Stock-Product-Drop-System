@@ -11,12 +11,18 @@ interface UseStockResult {
   refetch: () => void;
 }
 
-export function useStock(productId: string): UseStockResult {
+export function useStock(productId: string | null): UseStockResult {
   const [product, setProduct] = useState<Product | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetch = useCallback(async () => {
+    // Don't fetch if productId is null or empty
+    if (!productId) {
+      setIsLoading(false);
+      return;
+    }
+
     try {
       const data = await getProduct(productId);
       setProduct(data);
