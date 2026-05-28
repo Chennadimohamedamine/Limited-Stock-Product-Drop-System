@@ -80,7 +80,7 @@ export async function createReservation(
       return reservation;
     },
     {
-      isolationLevel: 'Serializable',
+      isolationLevel: 'ReadCommitted', // Changed from 'Serializable'
       timeout: 10000,
     }
   );

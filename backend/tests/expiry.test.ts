@@ -46,11 +46,22 @@ describe('Reservation expiry', () => {
       where: { email: 'expirytest@test.com' },
     }))!.id;
 
+    // Create a unique product for this test to avoid pollution
+    const testProduct = await prisma.product.create({
+      data: {
+        name: 'Expiry Test Product - Test 1',
+        description: 'Test',
+        totalStock: 10,
+        reservedStock: 0,
+        price: 49.99,
+      },
+    });
+
     // Manually create an already-expired reservation
     const reservation = await prisma.reservation.create({
       data: {
         userId,
-        productId,
+        productId: testProduct.id,
         quantity: 1,
         status: 'PENDING',
         expiresAt: new Date(Date.now() - 1000), // already expired
@@ -58,7 +69,7 @@ describe('Reservation expiry', () => {
     });
 
     await prisma.product.update({
-      where: { id: productId },
+      where: { id: testProduct.id },
       data: { reservedStock: { increment: 1 } },
     });
 
@@ -69,6 +80,10 @@ describe('Reservation expiry', () => {
 
     expect(res.status).toBe(409);
     expect(res.body.error).toMatch(/expired/i);
+
+    // Clean up this test's product
+    await prisma.reservation.deleteMany({ where: { productId: testProduct.id } });
+    await prisma.product.delete({ where: { id: testProduct.id } });
   });
 
   it('restores stock when reservation expires (simulated via direct DB update)', async () => {
@@ -76,11 +91,26 @@ describe('Reservation expiry', () => {
       where: { email: 'expirytest@test.com' },
     }))!.id;
 
+    // Create a unique product for this test
+    const testProduct = await prisma.product.create({
+      data: {
+        name: 'Expiry Test Product - Test 2',
+        description: 'Test',
+        totalStock: 10,
+        reservedStock: 0,
+        price: 49.99,
+      },
+    });
+
+    // Verify starting state
+    let product = await prisma.product.findUnique({ where: { id: testProduct.id } });
+    expect(product!.reservedStock).toBe(0);
+
     // Create a pending reservation
     const reservation = await prisma.reservation.create({
       data: {
         userId,
-        productId,
+        productId: testProduct.id,
         quantity: 3,
         status: 'PENDING',
         expiresAt: new Date(Date.now() + 60000),
@@ -88,9 +118,13 @@ describe('Reservation expiry', () => {
     });
 
     await prisma.product.update({
-      where: { id: productId },
+      where: { id: testProduct.id },
       data: { reservedStock: { increment: 3 } },
     });
+
+    // Verify stock was reserved
+    product = await prisma.product.findUnique({ where: { id: testProduct.id } });
+    expect(product!.reservedStock).toBe(3);
 
     // Simulate expiry: mark reservation as expired and restore stock
     await prisma.reservation.update({
@@ -99,12 +133,16 @@ describe('Reservation expiry', () => {
     });
 
     await prisma.product.update({
-      where: { id: productId },
+      where: { id: testProduct.id },
       data: { reservedStock: { decrement: 3 } },
     });
 
-    const product = await prisma.product.findUnique({ where: { id: productId } });
+    product = await prisma.product.findUnique({ where: { id: testProduct.id } });
     // Stock should be fully restored
     expect(product!.reservedStock).toBe(0);
+
+    // Clean up this test's product
+    await prisma.reservation.deleteMany({ where: { productId: testProduct.id } });
+    await prisma.product.delete({ where: { id: testProduct.id } });
   });
 });

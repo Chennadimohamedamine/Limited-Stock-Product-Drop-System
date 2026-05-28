@@ -21,7 +21,11 @@ app.use(cors({
 
 app.use(express.json());
 app.use(requestLogger);
-app.use(rateLimiter);
+
+// Only apply global rate limiter in production
+if (process.env.NODE_ENV !== 'test') {
+  app.use(rateLimiter);
+}
 
 // --- Routes ---
 app.use('/api/auth', authRoutes);

@@ -4,16 +4,16 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('🌱 Seeding database...');
+  console.log('Seeding database...');
 
-  // Clean existing data
+
   await prisma.inventoryLog.deleteMany();
   await prisma.order.deleteMany();
   await prisma.reservation.deleteMany();
   await prisma.product.deleteMany();
   await prisma.user.deleteMany();
 
-  // Create test users
+
   const hashedPassword = await bcrypt.hash('password123', 10);
 
   const user1 = await prisma.user.create({
@@ -24,7 +24,7 @@ async function main() {
     data: { email: 'user2@test.com', password: hashedPassword },
   });
 
-  console.log('✅ Created users:', user1.email, user2.email);
+  console.log(' Created users:', user1.email, user2.email);
 
   // Create products
   const product1 = await prisma.product.create({
@@ -47,8 +47,8 @@ async function main() {
     },
   });
 
-  console.log('✅ Created products:', product1.name, product2.name);
-  console.log('🎉 Seeding complete!');
+  console.log('Created products:', product1.name, product2.name);
+  console.log(' Seeding complete!');
   console.log('\n--- TEST CREDENTIALS ---');
   console.log('Email: test@test.com');
   console.log('Password: password123');

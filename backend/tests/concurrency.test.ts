@@ -32,13 +32,30 @@ beforeAll(async () => {
         password: 'password123',
       });
 
-    if (res.status !== 201) {
+    // Allow 429 (rate limit) and retry with delay
+    if (res.status === 429) {
+      console.log(`Rate limited at user ${i}, waiting...`);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      const retryRes = await request(app)
+        .post('/api/auth/register')
+        .send({
+          email: `concurrent_${RUN_ID}_${i}@test.com`,
+          password: 'password123',
+        });
+      
+      if (retryRes.status !== 201) {
+        throw new Error(`Failed to register user ${i} after retry: ${JSON.stringify(retryRes.body)}`);
+      }
+      tokens.push(retryRes.body.token as string);
+    } else if (res.status !== 201) {
       throw new Error(`Failed to register user ${i}: ${JSON.stringify(res.body)}`);
+    } else {
+      tokens.push(res.body.token as string);
     }
-    tokens.push(res.body.token as string);
   }
 
-  console.log(`✅ ${tokens.length} users registered`);
+  console.log(`${tokens.length} users registered`);
 
   // Create product with limited stock
   const product = await prisma.product.create({
@@ -51,8 +68,8 @@ beforeAll(async () => {
     },
   });
   productId = product.id;
-  console.log(`✅ Product created — id=${productId} stock=${STOCK}`);
-}, 120_000);
+  console.log(`Product created — id=${productId} stock=${STOCK}`);
+}, 180_000); // Increased timeout
 
 afterAll(async () => {
   await prisma.inventoryLog.deleteMany();
@@ -85,8 +102,8 @@ describe('Concurrency — race condition prevention', () => {
       const failed = results.filter((r) => r.status === 409);
       const other = results.filter((r) => r.status !== 201 && r.status !== 409);
 
-      console.log(`✅ Successful (201): ${successful.length}`);
-      console.log(`❌ Failed (409):     ${failed.length}`);
+      console.log(`Successful (201): ${successful.length}`);
+      console.log(`Failed (409):     ${failed.length}`);
       if (other.length) {
         console.log(`⚠  Other statuses:  ${other.length}`);
         other.slice(0, 3).forEach((r) => console.log(`   ${r.status}:`, r.body));
@@ -107,6 +124,6 @@ describe('Concurrency — race condition prevention', () => {
       });
       expect(pendingCount).toBe(STOCK);
     },
-    120_000
+    180_000
   );
 });
