@@ -1,0 +1,4 @@
+
+> drop-system-backend@1.0.0 test
+> jest --preset=ts-jest --testEnvironment=node --runInBand
+

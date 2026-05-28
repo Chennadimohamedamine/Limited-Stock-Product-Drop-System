@@ -1,0 +1,86 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum ReservationStatus {
+  PENDING
+  COMPLETED
+  EXPIRED
+}
+
+enum LogEvent {
+  RESERVED
+  CHECKOUT
+  SYSTEM_RELEASED
+}
+
+model User {
+  id           String        @id @default(uuid())
+  email        String        @unique
+  password     String // For basic JWT auth requirement
+  reservations Reservation[]
+  orders       Order[]
+  createdAt    DateTime      @default(now())
+}
+
+model Product {
+  id            String         @id @default(uuid())
+  name          String
+  totalStock    Int            @default(0)
+  reservedStock Int            @default(0) // Tracks allocations currently blocked by PENDING locks
+  reservations  Reservation[]
+  inventoryLogs InventoryLog[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@map("Product")
+}
+
+model Reservation {
+  id        String            @id @default(uuid())
+  userId    String
+  productId String
+  quantity  Int
+  status    ReservationStatus @default(PENDING)
+  expiresAt DateTime
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  order   Order?
+
+  // Bonus Edge Case protection: Prevents a single user from double-clicking 
+  // or hitting endpoints simultaneously to spin off identical parallel reservations
+  @@unique([userId, productId, status])
+  @@index([status, expiresAt])
+}
+
+model Order {
+  id            String   @id @default(uuid())
+  userId        String
+  reservationId String   @unique
+  totalAmount   Int      @default(0) // In lowest denomination (e.g. cents)
+  createdAt     DateTime @default(now())
+
+  user        User        @relation(fields: [userId], references: [id])
+  reservation Reservation @relation(fields: [reservationId], references: [id])
+}
+
+model InventoryLog {
+  id        String   @id @default(uuid())
+  productId String
+  event     LogEvent
+  delta     Int // Negative for reservations, positive for releases
+  note      String?
+  createdAt DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+}
