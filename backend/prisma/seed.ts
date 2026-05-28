@@ -1,42 +1,59 @@
 import { PrismaClient } from '@prisma/client';
-import * as bcrypt from 'bcryptjs';
+import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
 async function main() {
+  console.log('🌱 Seeding database...');
+
+  // Clean existing data
   await prisma.inventoryLog.deleteMany();
   await prisma.order.deleteMany();
   await prisma.reservation.deleteMany();
   await prisma.product.deleteMany();
   await prisma.user.deleteMany();
 
+  // Create test users
   const hashedPassword = await bcrypt.hash('password123', 10);
-  const user = await prisma.user.create({
-    data: {
-      email: 'test@test.com',
-      password: hashedPassword,
-    },
+
+  const user1 = await prisma.user.create({
+    data: { email: 'test@test.com', password: hashedPassword },
   });
 
-  const p1 = await prisma.product.create({
+  const user2 = await prisma.user.create({
+    data: { email: 'user2@test.com', password: hashedPassword },
+  });
+
+  console.log('✅ Created users:', user1.email, user2.email);
+
+  // Create products
+  const product1 = await prisma.product.create({
     data: {
-      name: 'Hype Drop Sneaker Gold',
-      description: 'Ultra limited edition gold sneakers.',
+      name: 'Limited Edition Sneakers',
+      description: 'Exclusive drop — only 10 pairs available worldwide.',
       totalStock: 10,
-      price: 199.99,
-    },
-  });
-
-  const p2 = await prisma.product.create({
-    data: {
-      name: 'Cyberpunk Jacket 2026',
-      description: 'Premium synthetic leather jacket with neon detailing.',
-      totalStock: 50,
+      reservedStock: 0,
       price: 299.99,
     },
   });
 
-  console.log({ message: 'Database seeded successfully', testUser: user.email, products: [p1.name, p2.name] });
+  const product2 = await prisma.product.create({
+    data: {
+      name: 'Rare Graphic Tee',
+      description: 'Artist collaboration. 50 units only.',
+      totalStock: 50,
+      reservedStock: 0,
+      price: 79.99,
+    },
+  });
+
+  console.log('✅ Created products:', product1.name, product2.name);
+  console.log('🎉 Seeding complete!');
+  console.log('\n--- TEST CREDENTIALS ---');
+  console.log('Email: test@test.com');
+  console.log('Password: password123');
+  console.log(`Product ID (stock=10): ${product1.id}`);
+  console.log(`Product ID (stock=50): ${product2.id}`);
 }
 
 main()

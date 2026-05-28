@@ -1,11 +1,17 @@
-import { Response, NextFunction, RequestHandler } from 'express';
-import { ZodSchema } from 'zod';
+import { Request, Response, NextFunction } from 'express';
+import { ZodSchema, ZodError } from 'zod';
 
-export const validate = (schema: ZodSchema): RequestHandler => (req, res, next) => {
-  const result = schema.safeParse(req.body);
-  if (!result.success) {
-    return res.status(400).json({ error: 'Validation failed', details: result.error.flatten() });
-  }
-  req.body = result.data;
-  next();
-};
+export function validate(schema: ZodSchema) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const result = schema.safeParse(req.body);
+    if (!result.success) {
+      res.status(400).json({
+        error: 'Validation failed',
+        details: result.error.flatten(),
+      });
+      return;
+    }
+    req.body = result.data;
+    next();
+  };
+}

@@ -1,43 +1,40 @@
-import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { AppError } from '../types';
+import prisma from '../utils/prisma';
+import { AppError } from '../utils/AppError';
 
-const prisma = new PrismaClient();
-
-export function generateToken(userId: string): string {
+function generateToken(userId: string, email: string): string {
   return jwt.sign(
-    { userId }, 
-    process.env.JWT_SECRET!, 
-    {
-     
-      expiresIn: (process.env.JWT_EXPIRES_IN || '7d') as jwt.SignOptions['expiresIn'],
-    }
+    { userId, email },
+    process.env.JWT_SECRET!,
+    { expiresIn: process.env.JWT_EXPIRES_IN ?? '7d' } as jwt.SignOptions
   );
 }
 
 export async function register(email: string, password: string) {
-  const existingUser = await prisma.user.findUnique({ where: { email } });
-  if (existingUser) {
-    throw new AppError('User already exists', 400);
-  }
-  const hashedPassword = await bcrypt.hash(password, 10);
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (existing) throw new AppError('Email already registered', 409);
+
+  const hashed = await bcrypt.hash(password, 10);
   const user = await prisma.user.create({
-    data: { email, password: hashedPassword }
+    data: { email, password: hashed },
+    select: { id: true, email: true, createdAt: true },
   });
-  const token = generateToken(user.id);
-  return { token, user: { id: user.id, email: user.email } };
+
+  const token = generateToken(user.id, user.email);
+  return { token, user };
 }
 
 export async function login(email: string, password: string) {
   const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) {
-    throw new AppError('Invalid credentials', 401);
-  }
-  const isMatch = await bcrypt.compare(password, user.password);
-  if (!isMatch) {
-    throw new AppError('Invalid credentials', 401);
-  }
-  const token = generateToken(user.id);
-  return { token, user: { id: user.id, email: user.email } };
+  if (!user) throw new AppError('Invalid email or password', 401);
+
+  const valid = await bcrypt.compare(password, user.password);
+  if (!valid) throw new AppError('Invalid email or password', 401);
+
+  const token = generateToken(user.id, user.email);
+  return {
+    token,
+    user: { id: user.id, email: user.email, createdAt: user.createdAt },
+  };
 }

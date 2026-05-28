@@ -1,65 +1,87 @@
 import request from 'supertest';
 import app from '../src/app';
-import { PrismaClient } from '@prisma/client';
-import { generateToken } from '../src/services/auth.service';
+import prisma from '../src/utils/prisma';
+import bcrypt from 'bcryptjs';
 
-const prisma = new PrismaClient();
+let token: string;
+let productId: string;
 
-describe('Reservation System Flow and Boundary Conditions', () => {
-  let userId: string;
-  let token: string;
-  let productId: string;
+beforeAll(async () => {
+  // Clean DB
+  await prisma.inventoryLog.deleteMany();
+  await prisma.order.deleteMany();
+  await prisma.reservation.deleteMany();
+  await prisma.product.deleteMany();
+  await prisma.user.deleteMany();
 
-  beforeAll(async () => {
-    await prisma.inventoryLog.deleteMany();
-    await prisma.order.deleteMany();
-    await prisma.reservation.deleteMany();
-    await prisma.product.deleteMany();
-    await prisma.user.deleteMany();
-
-    const user = await prisma.user.create({
-      data: { email: 'reserve@test.com', password: 'hashed_password' }
-    });
-    userId = user.id;
-    token = generateToken(userId);
-
-    const product = await prisma.product.create({
-      data: { name: 'Test Box', description: 'desc', totalStock: 5, price: 10 }
-    });
-    productId = product.id;
+  // Create user and get token
+  const res = await request(app).post('/api/auth/register').send({
+    email: 'reservetest@test.com',
+    password: 'password123',
   });
+  token = res.body.token;
 
-  afterAll(async () => {
-    await prisma.$disconnect();
+  // Create product
+  const product = await prisma.product.create({
+    data: {
+      name: 'Test Product',
+      description: 'Test',
+      totalStock: 5,
+      reservedStock: 0,
+      price: 99.99,
+    },
   });
+  productId = product.id;
+});
 
-  it('should return 401 when request is unauthenticated', async () => {
+afterAll(async () => {
+  await prisma.inventoryLog.deleteMany();
+  await prisma.order.deleteMany();
+  await prisma.reservation.deleteMany();
+  await prisma.product.deleteMany();
+  await prisma.user.deleteMany();
+  await prisma.$disconnect();
+});
+
+describe('POST /api/reserve', () => {
+  it('returns 401 without a token', async () => {
     const res = await request(app)
       .post('/api/reserve')
       .send({ productId, quantity: 1 });
     expect(res.status).toBe(401);
   });
 
-  it('should create successful reservation and reduce available stock', async () => {
+  it('successfully creates a reservation and decrements available stock', async () => {
     const res = await request(app)
       .post('/api/reserve')
       .set('Authorization', `Bearer ${token}`)
       .send({ productId, quantity: 2 });
 
     expect(res.status).toBe(201);
-    expect(res.body).toHaveProperty('reservationId');
+    expect(res.body.reservationId).toBeDefined();
+    expect(res.body.expiresAt).toBeDefined();
 
     const product = await prisma.product.findUnique({ where: { id: productId } });
-    expect(product?.reservedStock).toBe(2);
+    expect(product!.reservedStock).toBe(2);
   });
 
-  it('should prevent excess execution reservation and return 409 when insufficient stock remains', async () => {
+  it('returns 409 when requesting more stock than available', async () => {
+    // 5 total - 2 reserved = 3 available, requesting 10 should fail
     const res = await request(app)
       .post('/api/reserve')
       .set('Authorization', `Bearer ${token}`)
-      .send({ productId, quantity: 5 });
+      .send({ productId, quantity: 10 });
 
     expect(res.status).toBe(409);
-    expect(res.body.error).toBe('Insufficient stock');
+    expect(res.body.error).toMatch(/insufficient stock/i);
+  });
+
+  it('returns 400 for invalid input', async () => {
+    const res = await request(app)
+      .post('/api/reserve')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ productId: '', quantity: 0 });
+
+    expect(res.status).toBe(400);
   });
 });

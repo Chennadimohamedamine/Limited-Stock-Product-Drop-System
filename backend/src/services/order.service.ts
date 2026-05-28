@@ -1,57 +1,66 @@
 import { PrismaClient } from '@prisma/client';
-import { AppError } from '../types';
+import prisma from '../utils/prisma';
+import { AppError } from '../utils/AppError';
 
-const prisma = new PrismaClient();
+type TxClient = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
 
-export async function completeCheckout(userId: string, reservationId: string) {
-  return prisma.$transaction(async (tx) => {
-    const reservation = await tx.reservation.findUnique({
-      where: { id: reservationId }
-    });
+export async function checkout(reservationId: string, userId: string) {
+  return prisma.$transaction(
+    async (tx: TxClient) => {
+      const reservation = await tx.reservation.findFirst({
+        where: { id: reservationId, userId },
+      });
 
-    if (!reservation || reservation.userId !== userId) {
-      throw new AppError('Reservation not found', 404);
-    }
+      if (!reservation) throw new AppError('Reservation not found', 404);
 
-    if (reservation.status !== 'PENDING') {
-      throw new AppError('Reservation already used or expired', 409);
-    }
-
-    if (new Date() > reservation.expiresAt) {
-      throw new AppError('Reservation expired', 409);
-    }
-
-    const order = await tx.order.create({
-      data: {
-        reservationId: reservation.id,
-        userId: reservation.userId,
-        productId: reservation.productId,
-        quantity: reservation.quantity
+      if (reservation.status === 'COMPLETED') {
+        throw new AppError('Reservation already completed', 409);
       }
-    });
 
-    await tx.reservation.update({
-      where: { id: reservationId },
-      data: { status: 'COMPLETED' }
-    });
-
-    await tx.product.update({
-      where: { id: reservation.productId },
-      data: {
-        totalStock: { decrement: reservation.quantity },
-        reservedStock: { decrement: reservation.quantity }
+      if (reservation.status === 'EXPIRED') {
+        throw new AppError('Reservation has expired', 409);
       }
-    });
 
-    await tx.inventoryLog.create({
-      data: {
-        productId: reservation.productId,
-        event: 'PURCHASED',
-        delta: -reservation.quantity,
-        note: `Order unified ${order.id}`
+      if (reservation.expiresAt < new Date()) {
+        throw new AppError('Reservation has expired', 409);
       }
-    });
 
-    return order;
-  });
+      const [order] = await Promise.all([
+        tx.order.create({
+          data: {
+            reservationId: reservation.id,
+            userId: reservation.userId,
+            productId: reservation.productId,
+            quantity: reservation.quantity,
+          },
+        }),
+        tx.reservation.update({
+          where: { id: reservation.id },
+          data: { status: 'COMPLETED' },
+        }),
+        // Stock is now permanently sold — decrement reservedStock
+        tx.product.update({
+          where: { id: reservation.productId },
+          data: {
+            reservedStock: { decrement: reservation.quantity },
+            totalStock: { decrement: reservation.quantity },
+          },
+        }),
+        tx.inventoryLog.create({
+          data: {
+            productId: reservation.productId,
+            event: 'PURCHASED',
+            delta: -reservation.quantity,
+            note: `Order by user ${userId}`,
+          },
+        }),
+      ]);
+
+      return order;
+    },
+    {
+      isolationLevel: 'Serializable',
+      timeout: 10000,
+    }
+  );
 }

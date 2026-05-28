@@ -1,45 +1,59 @@
 import cron from 'node-cron';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../utils/prisma';
 import logger from '../utils/logger';
 
-const prisma = new PrismaClient();
+interface ReservationRow {
+  id: string;
+  productId: string;
+  quantity: number;
+  status: string;
+  expiresAt: Date;
+}
 
-export function startExpiryJob() {
+export function startExpiryJob(): void {
   cron.schedule('* * * * *', async () => {
-    const now = new Date();
-
-    const expired = await prisma.reservation.findMany({
-      where: { status: 'PENDING', expiresAt: { lt: now } }
-    });
-
-    if (expired.length === 0) return;
-
     try {
-      await prisma.$transaction(async (tx) => {
-        for (const r of expired) {
-          await tx.reservation.update({
-            where: { id: r.id },
-            data: { status: 'EXPIRED' }
-          });
+      const now = new Date();
 
-          await tx.product.update({
-            where: { id: r.productId },
-            data: { reservedStock: { decrement: r.quantity } }
-          });
-
-          await tx.inventoryLog.create({
-            data: {
-              productId: r.productId,
-              event: 'EXPIRED',
-              delta: r.quantity,
-              note: 'Auto-expired via cron system'
-            }
-          });
-        }
+      const expiredReservations: ReservationRow[] = await prisma.reservation.findMany({
+        where: { status: 'PENDING', expiresAt: { lt: now } },
       });
-      logger.info({ message: 'Reservations expired system execution finished', count: expired.length });
-    } catch (err: any) {
-      logger.error({ message: 'Failed to auto-expire reservations', error: err.message });
+
+      if (expiredReservations.length === 0) return;
+
+      const reservationUpdates = expiredReservations.map((r: ReservationRow) =>
+        prisma.reservation.update({ where: { id: r.id }, data: { status: 'EXPIRED' } })
+      );
+
+      const stockRestores = expiredReservations.map((r: ReservationRow) =>
+        prisma.product.update({
+          where: { id: r.productId },
+          data: { reservedStock: { decrement: r.quantity } },
+        })
+      );
+
+      const logEntries = expiredReservations.map((r: ReservationRow) =>
+        prisma.inventoryLog.create({
+          data: {
+            productId: r.productId,
+            event: 'EXPIRED',
+            delta: r.quantity,
+            note: `Auto-expired reservation ${r.id}`,
+          },
+        })
+      );
+
+      await prisma.$transaction([...reservationUpdates, ...stockRestores, ...logEntries]);
+
+      logger.info({
+        message: 'Reservations expired and stock restored',
+        count: expiredReservations.length,
+        reservationIds: expiredReservations.map((r: ReservationRow) => r.id),
+      });
+    } catch (err) {
+      logger.error({ message: 'Expiry job failed', error: err });
     }
   });
+
+  logger.info({ message: 'Reservation expiry cron job started (every 1 minute)' });
 }

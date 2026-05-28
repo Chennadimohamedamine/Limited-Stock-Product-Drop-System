@@ -1,86 +1,63 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-generator client {
-  provider = "prisma-client-js"
-}
-
-enum ReservationStatus {
-  PENDING
-  COMPLETED
-  EXPIRED
-}
-
-enum LogEvent {
-  RESERVED
-  CHECKOUT
-  SYSTEM_RELEASED
-}
-
 model User {
-  id           String        @id @default(uuid())
+  id           String        @id @default(cuid())
   email        String        @unique
-  password     String // For basic JWT auth requirement
-  reservations Reservation[]
-  orders       Order[]
+  password     String
   createdAt    DateTime      @default(now())
+  reservations Reservation[]
 }
 
 model Product {
-  id            String         @id @default(uuid())
+  id            String         @id @default(cuid())
   name          String
-  totalStock    Int            @default(0)
-  reservedStock Int            @default(0) // Tracks allocations currently blocked by PENDING locks
-  reservations  Reservation[]
-  inventoryLogs InventoryLog[]
+  description   String
+  totalStock    Int
+  reservedStock Int            @default(0)
+  price         Float
   createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-
-  @@map("Product")
+  reservations  Reservation[]
+  orders        Order[]
+  inventoryLogs InventoryLog[]
 }
 
 model Reservation {
-  id        String            @id @default(uuid())
+  id        String   @id @default(cuid())
   userId    String
   productId String
   quantity  Int
-  status    ReservationStatus @default(PENDING)
+  status    String   @default("PENDING")
   expiresAt DateTime
-  createdAt DateTime          @default(now())
-  updatedAt DateTime          @updatedAt
-
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-  order   Order?
-
-  // Bonus Edge Case protection: Prevents a single user from double-clicking 
-  // or hitting endpoints simultaneously to spin off identical parallel reservations
-  @@unique([userId, productId, status])
-  @@index([status, expiresAt])
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id])
+  order     Order?
 }
 
 model Order {
-  id            String   @id @default(uuid())
+  id            String      @id @default(cuid())
+  reservationId String      @unique
   userId        String
-  reservationId String   @unique
-  totalAmount   Int      @default(0) // In lowest denomination (e.g. cents)
-  createdAt     DateTime @default(now())
-
-  user        User        @relation(fields: [userId], references: [id])
-  reservation Reservation @relation(fields: [reservationId], references: [id])
+  productId     String
+  quantity      Int
+  createdAt     DateTime    @default(now())
+  reservation   Reservation @relation(fields: [reservationId], references: [id])
+  product       Product     @relation(fields: [productId], references: [id])
 }
 
 model InventoryLog {
-  id        String   @id @default(uuid())
+  id        String   @id @default(cuid())
   productId String
-  event     LogEvent
-  delta     Int // Negative for reservations, positive for releases
+  event     String
+  delta     Int
   note      String?
   createdAt DateTime @default(now())
-
-  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  @@index([productId])
+  product   Product  @relation(fields: [productId], references: [id])
 }

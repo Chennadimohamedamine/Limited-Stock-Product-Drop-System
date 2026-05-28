@@ -1,9 +1,9 @@
-import { Response, NextFunction, RequestHandler } from 'express';
-import { AuthRequest } from '../types';
+import { Request, Response, NextFunction } from 'express';
 import logger from '../utils/logger';
 
-export const requestLogger: RequestHandler = (req: AuthRequest, res: Response, next: NextFunction) => {
+export function requestLogger(req: Request, res: Response, next: NextFunction): void {
   const start = Date.now();
+
   res.on('finish', () => {
     const duration = Date.now() - start;
     logger.info({
@@ -11,8 +11,9 @@ export const requestLogger: RequestHandler = (req: AuthRequest, res: Response, n
       path: req.path,
       status: res.statusCode,
       duration: `${duration}ms`,
-      userId: req.userId || 'anonymous'
+      ip: req.ip,
     });
   });
+
   next();
-};
+}

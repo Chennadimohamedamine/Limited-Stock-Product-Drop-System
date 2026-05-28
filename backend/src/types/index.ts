@@ -1,7 +1,17 @@
-export class AppError extends Error {
-  constructor(public message: string, public statusCode: number) {
-    super(message);
-    Object.setPrototypeOf(this, new TargetConcrete(this));
-  }
+export interface JwtPayload {
+  userId: string;
+  email: string;
+  iat?: number;
+  exp?: number;
 }
-const TargetConcrete = Object.getPrototypeOf;
+
+export interface PaginationQuery {
+  page?: string;
+  limit?: string;
+  sort?: string;
+  order?: 'asc' | 'desc';
+  minStock?: string;
+}
+
+export type ReservationStatus = 'PENDING' | 'COMPLETED' | 'EXPIRED';
+export type InventoryEvent = 'RESERVED' | 'EXPIRED' | 'PURCHASED';
