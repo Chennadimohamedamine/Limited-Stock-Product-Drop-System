@@ -2,8 +2,12 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import prisma from '../utils/prisma';
 import { AppError } from '../utils/AppError';
+import logger from '../utils/logger';
 
 function generateToken(userId: string, email: string): string {
+  if (!userId || !email) {
+    throw new Error('Cannot generate token without userId and email');
+  }
   return jwt.sign(
     { userId, email },
     process.env.JWT_SECRET!,
@@ -21,8 +25,22 @@ export async function register(email: string, password: string) {
     select: { id: true, email: true, createdAt: true },
   });
 
+  if (!user.id) {
+    throw new AppError('Failed to create user', 500);
+  }
+
   const token = generateToken(user.id, user.email);
-  return { token, user };
+  
+  logger.info({
+    message: 'User registered',
+    userId: user.id,
+    email: user.email,
+  });
+
+  return { 
+    token, 
+    user: { id: user.id, email: user.email, createdAt: user.createdAt }
+  };
 }
 
 export async function login(email: string, password: string) {
@@ -32,7 +50,18 @@ export async function login(email: string, password: string) {
   const valid = await bcrypt.compare(password, user.password);
   if (!valid) throw new AppError('Invalid email or password', 401);
 
+  if (!user.id) {
+    throw new AppError('User has no ID', 500);
+  }
+
   const token = generateToken(user.id, user.email);
+  
+  logger.info({
+    message: 'User logged in',
+    userId: user.id,
+    email: user.email,
+  });
+
   return {
     token,
     user: { id: user.id, email: user.email, createdAt: user.createdAt },
