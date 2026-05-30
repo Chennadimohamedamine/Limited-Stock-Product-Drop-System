@@ -10,9 +10,9 @@ A full-stack **limited-stock reservation system** built to handle 100 concurrent
 
 | | URL |
 |---|---|
-|  Frontend | `https://your-frontend.pxxl.app` |
-|  Backend API | `https://your-backend.pxxl.app` |
-|  Health Check | `https://your-backend.pxxl.app/health` |
+|  Frontend | `https://localhost:5173` |
+|  Backend API | `https://localhost:3000/api` |
+|  Health Check | `https://localhost:3000/health` |
 
 >  Replace the URLs above with your actual Pxxl deployment links before submitting.
 
