@@ -31,7 +31,7 @@ async function main() {
     data: {
       name: 'Limited Edition Sneakers',
       description: 'Exclusive drop — only 10 pairs available worldwide.',
-      totalStock: 10,
+      totalStock: 2,
       reservedStock: 0,
       price: 299.99,
     },
@@ -40,8 +40,8 @@ async function main() {
   const product2 = await prisma.product.create({
     data: {
       name: 'Rare Graphic Tee',
-      description: 'Artist collaboration. 50 units only.',
-      totalStock: 50,
+      description: 'Artist collaboration. 5 units only.',
+      totalStock: 5,
       reservedStock: 0,
       price: 79.99,
     },
